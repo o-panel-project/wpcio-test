@@ -1,0 +1,6 @@
+config WPCIO
+	tristate "delicated IO support on WPC board"
+	depends on OMAP3WPC
+	help
+	  This option enables device driver support for the
+          delicated IO pin for Worldpicom board
