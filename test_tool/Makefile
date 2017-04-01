@@ -1,6 +1,6 @@
-CC=arm-none-linux-gnueabi-gcc
-AR=arm-none-linux-gnueabi-ar
-LD=arm-none-linux-gnueabi-ld
+CC=arm-linux-gnueabihf-gcc
+AR=arm-linux-gnueabihf-ar
+LD=arm-linux-gnueabihf-ld
 CFLAGS= -Wall -Os
 LDFLAGS= -lpthread
 LIBS=

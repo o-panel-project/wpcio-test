@@ -32,17 +32,20 @@
 
 #include <asm/uaccess.h>
 #include <linux/i2c/twl.h>
+#include <linux/gpio.h>
 
 #include "wpcio_pin.h"
 #include "wpcio.h"
-#include "twl4030-madc.h"
+//#include "twl4030-madc.h"
+#include <linux/time.h>
+#include <linux/mfd/atc260x/atc260x.h>
 
 #define MY_NAME "WPC_IO"
 #define IO_INFO(fmt, arg...) printk(KERN_INFO MY_NAME ": " fmt "\n" , ## arg)
 #define IO_DBG(fmt, arg...)  printk(KERN_DEBUG MY_NAME " %s: " fmt "\n" , __FUNCTION__ , ## arg)
 #define IO_ERR(fmt, arg...)  printk(KERN_ERR  MY_NAME " %s: " fmt "\n" , __FUNCTION__ , ## arg)
 
-#define IO_DRV_VERSION			"2.0.0 for 2.6.37"
+#define IO_DRV_VERSION			"2.0.0 for 3.10.37"
 #define MAX_OPEN_COUNT			2
 
 #define MADC_SAMPLE_RATE_MS		50
@@ -73,6 +76,7 @@ struct _wpcio_data {
 
 // Colman start: 110412
 
+/*
 #if defined(CONFIG_OMAP3WPC)
 	#include "../../../arch/arm/mach-omap2/mux.h"
 #else
@@ -83,6 +87,7 @@ struct _wpcio_data {
 	#error "We need CONFIG_OMAP_MUX defined"
 #endif
 
+*/
 // Colman start, change user gpio default state, before is all input with pull up,
 // now defines as below
 static struct _user_gpio {
@@ -93,16 +98,18 @@ static struct _user_gpio {
 	int pull;   // 0 = input pull low, 1 = input pull high, others = no pull up
 	int requested;  // internal use
 } user_gpio[] = {
-	{54, "GPIO_54", 1, 0, 0, 0 },   // output low - bat2 charger on/off
-	{55, "GPIO_55", 1, 0, 1, 0 },   // output low - lcd power sequence
-	{56, "GPIO_56", 0, 0, 0, 0 },   // Input pull low - Cradle status input
-	{57, "GPIO_57", 0, 0, 0, 0 },   // input pull low - Bat2 detect input
-	{58, "GPIO_58", 1, 0, 0, 0 },   // output low - soft power off trigger
-	{65, "GPIO_65", 1, 0, 0, 0 },   // output low - bat1 charger on/off
-	{148, "GPIO_148", 0, 0, 0, 0 }, // input pull low - no specified yet
+//	{54, "GPIO_54", 1, 0, 0, 0 },   // output low - bat2 charger on/off
+	{22, "GPIO_22", 1, 0, 1, 1 },   // output low - lcd power sequence
+//	{56, "GPIO_56", 0, 0, 0, 0 },   // Input pull low - Cradle status input
+//	{57, "GPIO_57", 0, 0, 0, 0 },   // input pull low - Bat2 detect input
+	{116, "GPIO_116", 1, 0, 0, 1 },   // output low - soft power off trigger,already initilized when board init.
+	{18, "GPIO_18", 1, 0, 0, 0 },   // output low - bat1 charger on/off
+	{40, "GPIO_40", 1, 0, 0, 1 },   // output low - audio controls POWER_AMP_ON on/off
+//	{148, "GPIO_148", 0, 0, 0, 0 }, // input pull low - no specified yet
 };
 
 static void set_mux_gpio(struct _user_gpio *io) {
+	/*
 	if (io->output) {
 		omap_mux_set_gpio(OMAP_MUX_MODE4 | OMAP_PIN_OUTPUT, io->gpio);
 	}
@@ -113,6 +120,7 @@ static void set_mux_gpio(struct _user_gpio *io) {
 		else val |= OMAP_PIN_INPUT;
 		omap_mux_set_gpio(val, io->gpio);
 	}
+	*/
 }
 
 static void set_dir_gpio(struct _user_gpio *io) {
@@ -138,6 +146,7 @@ static struct _user_gpio * get_gpio(int gpio) {
 // Colman end, 110412
 
 static void enable_madc(void) {
+	/*
 	u8 value;
 	// Enable madc use HFCLK
 	twl_i2c_read_u8(TWL4030_MODULE_INTBR, &value, TWL4030_INTBR_GPBR1);
@@ -150,6 +159,7 @@ static void enable_madc(void) {
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, value, TWL4030_MADC_CTRL1);
 	value |= TWL4030_MADC_CTRL1_MADCON;
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, value, TWL4030_MADC_CTRL1);
+	*/
 }
 
 static void start_madc(struct _wpcio_data *wpcio_data) {
@@ -157,10 +167,10 @@ static void start_madc(struct _wpcio_data *wpcio_data) {
 	switch (wpcio_data->channel) {
 		case 2:
 			val = 0x04;
-			gpio_set_value_cansleep(GPIO_PIN_ADCIN2_SEL, 1);
+			//gpio_set_value_cansleep(GPIO_PIN_ADCIN2_SEL, 1);
 			break;
 		case 1:
-			gpio_set_value_cansleep(GPIO_PIN_ADCIN2_SEL, 0);
+			//gpio_set_value_cansleep(GPIO_PIN_ADCIN2_SEL, 0);
 			val = 0x04;
 			break;
 		case 0:
@@ -168,12 +178,16 @@ static void start_madc(struct _wpcio_data *wpcio_data) {
 			val = 0x01;
 			break;
 	}
+	//Enable GPIOB1(SYSEN), for ADC
+	gpio_set_value_cansleep(GPIO_PIN_ADCIN2_SEL, 1);  
+	/*
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, val, TWL4030_MADC_SW1SELECT_LSB);
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, 0x00, TWL4030_MADC_SW1SELECT_MSB);
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, val, TWL4030_MADC_SW1AVERAGE_LSB);
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, 0x00, TWL4030_MADC_SW1AVERAGE_MSB);
 	// start the conversion
 	twl_i2c_write_u8(TWL4030_MODULE_MADC, TWL_MADC_CTRL_SW1_SW1, TWL4030_MADC_CTRL_SW1);
+	*/
 	// set a timer to get the value
 	mod_timer(&wpcio_data->timer, jiffies + msecs_to_jiffies(MADC_SAMPLE_RATE_MS));
 }
@@ -181,11 +195,25 @@ static void start_madc(struct _wpcio_data *wpcio_data) {
 // Work handler wpen request
 static void conversion_work_handler(void* context) {
 	struct _wpcio_data *wpcio_data = container_of(context, struct _wpcio_data, conversion_work);
-	u8 value;
+	u8 ret;
 	u32 d;
+	ret=atc260x_ex_auxadc_read_by_name("AUX0",&d);
+	if(ret < 0)
+		printk("cannot get the AUX0 correct translation data!\n");
+	//printk("AUX0 value=%d\n",d);
+	wpcio_data->dc_level = d;
+
+	ret=atc260x_ex_auxadc_read_by_name("AUX2",&d);
+	if(ret < 0)
+		printk("cannot get the AUX2 correct translation data!\n");
+	//printk("AUX2 value=%d\n",d);
+	wpcio_data->bat1_level = d;
+
+	start_madc(wpcio_data);
 	// check conversion end
+	/*
 	twl_i2c_read_u8(TWL4030_MODULE_MADC, &value,  TWL4030_MADC_CTRL_SW1);
-	if (value & TWL4030_MADC_CTRL_SW1_EOC_SW1) {
+	if (value ) {
 		// get the adc value
 		switch(wpcio_data->channel) {
 			case 1:
@@ -217,6 +245,7 @@ static void conversion_work_handler(void* context) {
 		// retry after 10mS
 		mod_timer(&wpcio_data->timer, jiffies + msecs_to_jiffies(10));
 	}
+	*/
 }
 
 static void start_conversion(unsigned long context) {
@@ -281,22 +310,25 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 			return 0;
 
 		case WPC_RESET_USB_HUB:
+			// no usb hub 
 			spin_lock(&wpcio_data.acc_lock);
-			gpio_set_value_cansleep(GPIO_PIN_USB_HUB_RESET, 1);
+			//gpio_set_value_cansleep(GPIO_PIN_USB_HUB_RESET, 1);
 			mdelay(100);
-			gpio_set_value_cansleep(GPIO_PIN_USB_HUB_RESET, 0);
+			//gpio_set_value_cansleep(GPIO_PIN_USB_HUB_RESET, 0);
 			spin_unlock(&wpcio_data.acc_lock);
 			return 0;
 
 		case WPC_SET_USB1_ATTACH:
 			data = arg;
-			gpio_set_value_cansleep(GPIO_PIN_USB1_OE_N, data? 0:1);
+			// in o-panel ,don't need to power the cradle by gpio control 
+			//gpio_set_value_cansleep(GPIO_PIN_USB1_OE_N, data? 0:1); 
 			return 0;
 
 		case WPC_SET_USB2_ONOFF:
+			//in schematic,network name is USB0_ON, for microUSB-AB
 			spin_lock(&wpcio_data.acc_lock);
 			if (arg) {
-				gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 0);
+				//gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 0);
 				gpio_set_value_cansleep(GPIO_PIN_USB2_POWER, 1);
 				mdelay(200);
 				wpcio_data.usb2_overcurrent = gpio_get_value_cansleep(GPIO_PIN_USB2_OVERCUR_N)? 0:1;
@@ -304,7 +336,7 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 				else {
 					printk(MY_NAME": USB2 overcurrent, switched off\n");
 					// turn off usb2
-					gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 1);
+					//gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 1);
 					gpio_set_value_cansleep(GPIO_PIN_USB2_POWER, 0);
 					wpcio_data.usb2_on = 0;
 					spin_lock(&wpcio_data.acc_lock);
@@ -313,7 +345,7 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 			}
 			else {
 				// turn off usb2
-				gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 1);
+				//gpio_set_value_cansleep(GPIO_PIN_USB2_OE_N, 1);
 				gpio_set_value_cansleep(GPIO_PIN_USB2_POWER, 0);
 				wpcio_data.usb2_on = 0;
 			}
@@ -321,14 +353,15 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 			return 0;
 
 		case WPC_SET_USB3_ONOFF:
+			//in schematic,network name is USB2_ON, for USB FeliCa
 			spin_lock(&wpcio_data.acc_lock);
 			if (arg) {
-				gpio_set_value_cansleep(GPIO_PIN_USB3_OE_N, 0);
+			//	gpio_set_value_cansleep(GPIO_PIN_USB3_OE_N, 0);
 				gpio_set_value_cansleep(GPIO_PIN_USB3_POWER, 1);
 			}
 			else {
 				// turn off usb2
-				gpio_set_value_cansleep(GPIO_PIN_USB3_OE_N, 1);
+			//	gpio_set_value_cansleep(GPIO_PIN_USB3_OE_N, 1);
 				gpio_set_value_cansleep(GPIO_PIN_USB3_POWER, 0);
 			}
 			spin_unlock(&wpcio_data.acc_lock);
@@ -337,16 +370,16 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 		case WPC_SET_USB4_ONOFF:
 			spin_lock(&wpcio_data.acc_lock);
 			if (arg) {
-				gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 0);
-				gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 1);
+				//gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 0);
+				//gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 1);
 				mdelay(100);
-				wpcio_data.usb4_overcurrent = gpio_get_value_cansleep(GPIO_PIN_USB4_OVERCUR_N)? 0:1;
+				//wpcio_data.usb4_overcurrent = gpio_get_value_cansleep(GPIO_PIN_USB4_OVERCUR_N)? 0:1;
 				if (!wpcio_data.usb2_overcurrent) wpcio_data.usb4_on = 1;
 				else {
 					printk(MY_NAME": USB2 overcurrent, switched off\n");
 					// turn off usb2
-					gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 1);
-					gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 0);
+					//gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 1);
+					//gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 0);
 					wpcio_data.usb4_on = 0;
 					spin_lock(&wpcio_data.acc_lock);
 					return -EFAULT;
@@ -354,8 +387,8 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 			}
 			else {
 				// turn off usb2
-				gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 1);
-				gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 0);
+				//gpio_set_value_cansleep(GPIO_PIN_USB4_OE_N, 1);
+				//gpio_set_value_cansleep(GPIO_PIN_USB4_POWER, 0);
 				wpcio_data.usb4_on = 0;
 			}
 			spin_unlock(&wpcio_data.acc_lock);
@@ -372,7 +405,8 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 		case WPC_GET_USB4_OVERCUR:
 			if (!arg) return -EFAULT;
 			if (wpcio_data.usb4_on)
-				wpcio_data.usb2_overcurrent = gpio_get_value_cansleep(GPIO_PIN_USB4_OVERCUR_N)? 0:1;
+				;
+				//wpcio_data.usb2_overcurrent = gpio_get_value_cansleep(GPIO_PIN_USB4_OVERCUR_N)? 0:1;
 			else wpcio_data.usb4_overcurrent = -1;
 			return copy_to_user((void __user *)arg, &wpcio_data.usb4_overcurrent,
 					sizeof(wpcio_data.usb4_overcurrent))? -EFAULT : 0;
@@ -386,9 +420,9 @@ static long wpc_io_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 
 		case WPC_GET_BAT2_CHARGING_STAT:
 			if (!arg) return -EFAULT;
-			data = gpio_get_value_cansleep(GPIO_PIN_BAT2_FASTCHG_N)? 0:WPC_CHARGING_FAST;
-			data |= gpio_get_value_cansleep(GPIO_PIN_BAT2_FULLCHG_N)? 0:WPC_CHARGING_FULL;
-			data |= gpio_get_value_cansleep(GPIO_PIN_BAT2_FAULT_N)? 0:WPC_CHARGING_FAULT;
+			//data = gpio_get_value_cansleep(GPIO_PIN_BAT2_FASTCHG_N)? 0:WPC_CHARGING_FAST;
+			//data |= gpio_get_value_cansleep(GPIO_PIN_BAT2_FULLCHG_N)? 0:WPC_CHARGING_FULL;
+			//data |= gpio_get_value_cansleep(GPIO_PIN_BAT2_FAULT_N)? 0:WPC_CHARGING_FAULT;
 			return copy_to_user((void __user *)arg, &data, sizeof(data))? -EFAULT : 0;
 
 		case WPC_CONNECT_SDIO_WIFI:
@@ -577,7 +611,8 @@ static struct file_operations wpc_io_fops = {
 struct miscdevice wpc_io_miscdev = {
     .name       = "wpcio",
     .fops       = &wpc_io_fops,
-    .minor      = WPCIO_MINOR,
+    //.minor      = WPCIO_MINOR,
+    .minor      = 222,
 };
 
 static struct _pin_table {
@@ -594,31 +629,31 @@ static struct _pin_table {
 	{ GPIO_PIN_LED_GREEN, 		"LED_GREEN", 	1, 0, 0 },
 	{ GPIO_PIN_LED_RED,			"LED_RED", 		1, 0, 0 },
 	{ GPIO_PIN_LED_ORANGE, 		"LED_ORANGE",	1, 0, 0 },
-	{ GPIO_PIN_USB_HUB_RESET, 	"HUB_RESET",	1, 1, 0 },
-	{ GPIO_PIN_USB1_OE_N,		"USB1_OEN",		1, 1, 0 },
-	{ GPIO_PIN_USB2_OE_N,		"USB2_OEN",		1, 1, 0 },
-	{ GPIO_PIN_USB3_OE_N,		"USB3_OEN",		1, 1, 0 },
-	{ GPIO_PIN_USB4_OE_N,		"USB4_OEN",		1, 1, 0 },
-	{ GPIO_PIN_USB2_POWER,		"USB2_PWR", 	1, 0, 0 },
+//	{ GPIO_PIN_USB_HUB_RESET, 	"HUB_RESET",	1, 1, 0 },
+//	{ GPIO_PIN_USB1_OE_N,		"USB1_OEN",		1, 1, 0 },
+//	{ GPIO_PIN_USB2_OE_N,		"USB2_OEN",		1, 1, 0 },
+//	{ GPIO_PIN_USB3_OE_N,		"USB3_OEN",		1, 1, 0 },
+//	{ GPIO_PIN_USB4_OE_N,		"USB4_OEN",		1, 1, 0 },
+//	{ GPIO_PIN_USB2_POWER,		"USB2_PWR", 	1, 0, 0 },
 	{ GPIO_PIN_USB3_POWER,		"USB3_PWR", 	1, 0, 0 },
-	{ GPIO_PIN_USB4_POWER,		"USB4_PWR", 	1, 0, 0 },
+//	{ GPIO_PIN_USB4_POWER,		"USB4_PWR", 	1, 0, 0 },
 	{ GPIO_PIN_USB2_OVERCUR_N,	"USB2_OCN",		0, 0, 0 },
-	{ GPIO_PIN_USB4_OVERCUR_N,	"USB4_OCN",		0, 0, 0 },
+//	{ GPIO_PIN_USB4_OVERCUR_N,	"USB4_OCN",		0, 0, 0 },
 	{ GPIO_PIN_BAT1_FAULT_N,	"BAT1_FAULTN",	0, 0, 0 },
 	{ GPIO_PIN_BAT1_FASTCHG_N,	"BAT1_FASTCN",	0, 0, 0 },
 	{ GPIO_PIN_BAT1_FULLCHG_N,	"BAT1_FULLCN",	0, 0, 0 },
-	{ GPIO_PIN_BAT2_FAULT_N,	"BAT2_FAULTN",	0, 0, 0 },
-	{ GPIO_PIN_BAT2_FASTCHG_N,	"BAT2_FASTCN",	0, 0, 0 },
-	{ GPIO_PIN_BAT2_FULLCHG_N,	"BAT2_FULLCN",	0, 0, 0 },
-	//{ GPIO_PIN_WIFI_PD_N,		"WIFI_PDN",		1, 0, 0 },	// Leave mmc3 to request it.
-	{ GPIO_PIN_WIFI_RESET_N,	"WIFI_RESETN",	1, 0, 0 },
+//	{ GPIO_PIN_BAT2_FAULT_N,	"BAT2_FAULTN",	0, 0, 0 },
+//	{ GPIO_PIN_BAT2_FASTCHG_N,	"BAT2_FASTCN",	0, 0, 0 },
+//	{ GPIO_PIN_BAT2_FULLCHG_N,	"BAT2_FULLCN",	0, 0, 0 },
+	//{ GPIO_PIN_WIFI_PD_N,		"WIFI_PDN",		1, 0, 1 },	// Leave mmc3 to request it.
+	//{ GPIO_PIN_WIFI_RESET_N,	"WIFI_RESETN",	1, 0, 1 },
 	{ GPIO_PIN_ADCIN2_SEL,		"ADCIN2_SEL",   1, 0, 0 },
-	#if defined(GPIO_PIN_MMC1_ON_N)
-		{ GPIO_PIN_MMC1_ON_N, 	"MMC1_ONN",		1, 0, 0 },
-	#endif
-	#if defined(GPIO_PIN_TP_POWER)
-		{ GPIO_PIN_TP_POWER,	"TP_PWR",		1, 1, 0 },
-	#endif
+//	#if defined(GPIO_PIN_MMC1_ON_N)
+//		{ GPIO_PIN_MMC1_ON_N, 	"MMC1_ONN",		1, 0, 0 },
+//	#endif
+//	#if defined(GPIO_PIN_TP_POWER)
+//		{ GPIO_PIN_TP_POWER,	"TP_PWR",		1, 1, 0 },
+//	#endif
 };
 
 static int __init wpc_io_init(void) {
@@ -639,11 +674,13 @@ static int __init wpc_io_init(void) {
 			pin_table[i].requested = 1;
 			if (pin_table[i].output) gpio_direction_output(pin_table[i].gpio, pin_table[i].level);
 			else gpio_direction_input(pin_table[i].gpio);
+			/* no GPIO_PIN_USB_HUB_RESET
 			if (pin_table[i].gpio == GPIO_PIN_USB_HUB_RESET) {
 				// pulse the usb hub reset
 				mdelay(100);
 				gpio_set_value_cansleep(GPIO_PIN_USB_HUB_RESET, 0);
 			}
+			*/
 		}
 		else {
 			printk(MY_NAME": Unable to request gpio %d, name = %s\n",
@@ -654,6 +691,8 @@ static int __init wpc_io_init(void) {
 	// Colman start, 110412
 	// enable user gpio pin
 	for (i = 0; i < ARRAY_SIZE(user_gpio); i++){
+		if (user_gpio[i].requested == 1)
+			continue;
 		if (!gpio_request(user_gpio[i].gpio, user_gpio[i].name)) {
 			user_gpio[i].requested = 1;
 			set_dir_gpio(&user_gpio[i]);
@@ -668,7 +707,7 @@ static int __init wpc_io_init(void) {
 
 	enable_madc();
 
-	wpcio_data.workqueue = create_workqueue("wpcio_workqueue");
+	wpcio_data.workqueue = create_singlethread_workqueue("wpcio_workqueue");
 	INIT_WORK(&wpcio_data.conversion_work, (work_func_t)conversion_work_handler);
 	init_timer(&wpcio_data.timer);
 	wpcio_data.timer.data = (unsigned long)&wpcio_data;
